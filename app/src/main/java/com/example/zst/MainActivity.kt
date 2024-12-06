@@ -385,7 +385,7 @@ fun ChatScreen() {
                     .setMessage("需要存储权限才能选择文件")
                     .setPositiveButton("去设置") { _, _ ->
                         try {
-                            // 打开应用设���页面
+                            // 打开应用设页面
                             val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
                                 data = Uri.fromParts("package", it.packageName, null)
                             }
@@ -524,6 +524,11 @@ fun ChatScreen() {
             
             stopRecording(recorder, recordStartTime) { duration ->
                 audioFile?.let { file ->
+                    val currentTime = System.currentTimeMillis()
+                    // 添加时间戳检查
+                    if (messages.isEmpty() || shouldAddTimestamp(messages, messages.last(), currentTime)) {
+                        messages = messages + ChatMessage.TimestampMessage(currentTime)
+                    }
                     messages = messages + ChatMessage.AudioMessage(
                         audioFile = file.absolutePath,
                         duration = duration.coerceAtMost(60000), // 确保时长不超过60秒
