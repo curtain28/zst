@@ -218,12 +218,22 @@ class MainActivity : ComponentActivity() {
     fun checkStoragePermissions(onResult: (Boolean) -> Unit) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             if (!Environment.isExternalStorageManager()) {
-                try {
-                    val intent = Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)
-                    startActivity(intent)
-                } catch (e: Exception) {
-                    onResult(false)
-                }
+                // 使用 Android 原生的 AlertDialog
+                android.app.AlertDialog.Builder(this)
+                    .setTitle("存储权限")
+                    .setMessage("需要存储权限才能保存文件到手机存储")
+                    .setPositiveButton("去设置") { _, _ ->
+                        try {
+                            val intent = Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)
+                            startActivity(intent)
+                        } catch (e: Exception) {
+                            onResult(false)
+                        }
+                    }
+                    .setNegativeButton("取消") { _, _ ->
+                        onResult(false)
+                    }
+                    .show()
             } else {
                 onResult(true)
             }
@@ -333,28 +343,47 @@ fun ChatScreen() {
                             }
                         }
                     }
-                } else {
-                    Toast.makeText(context, "需要存储权限才能保存文件", Toast.LENGTH_SHORT).show()
                 }
             }
         }
     }
     
-    // 添加存储权限请求
+    // 修改存储权限请求的处理
     val storagePermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { isGranted: Boolean ->
         if (isGranted) {
-            when (currentStorageAction) {
-                StorageAction.PICK_FILE -> filePickerLauncher.launch("*/*")
-                else -> {} // 处理其他情况
+            // 基本权限获取成功后，检查并请求完全的文件访问权限
+            val activity = context as? MainActivity
+            activity?.checkStoragePermissions { granted ->
+                if (granted) {
+                    when (currentStorageAction) {
+                        StorageAction.PICK_FILE -> filePickerLauncher.launch("*/*")
+                        else -> {} // 处理其他情况
+                    }
+                }
             }
         } else {
-            val message = when (currentStorageAction) {
-                StorageAction.PICK_FILE -> "需要存储权限才能选择文件"
-                else -> "需要存储权限"
+            // 使用 Activity 的 AlertDialog
+            val activity = context as? MainActivity
+            activity?.let {
+                android.app.AlertDialog.Builder(it)
+                    .setTitle("存储权限")
+                    .setMessage("需要存储权限才能选择文件")
+                    .setPositiveButton("去设置") { _, _ ->
+                        try {
+                            // 打开应用设置页面
+                            val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                                data = Uri.fromParts("package", it.packageName, null)
+                            }
+                            it.startActivity(intent)
+                        } catch (e: Exception) {
+                            Toast.makeText(context, "无法打开设置页面", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                    .setNegativeButton("取消", null)
+                    .show()
             }
-            Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
         }
     }
     
@@ -696,17 +725,17 @@ fun ChatScreen() {
                                     .fillMaxWidth()
                                     .padding(top = 8.dp)
                             ) {
+                                // 在更多面板中的图标布局
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .padding(top = 16.dp),  // 增加顶部间距
-                                    horizontalArrangement = Arrangement.Start,  // 改为 Start 对齐
+                                        .padding(horizontal = 24.dp, vertical = 16.dp),  // 调整整体边距
+                                    horizontalArrangement = Arrangement.SpaceEvenly,  // 改为均匀分布
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     // 相册按钮
                                     Column(
-                                        horizontalAlignment = Alignment.CenterHorizontally,
-                                        modifier = Modifier.padding(start = 16.dp, end = 32.dp)  // 调整左右间距
+                                        horizontalAlignment = Alignment.CenterHorizontally
                                     ) {
                                         IconButton(
                                             onClick = { multipleImagePickerLauncher.launch("image/*") },
@@ -736,8 +765,7 @@ fun ChatScreen() {
                                     
                                     // 相机按钮
                                     Column(
-                                        horizontalAlignment = Alignment.CenterHorizontally,
-                                        modifier = Modifier.padding(end = 32.dp)  // 调整右间距
+                                        horizontalAlignment = Alignment.CenterHorizontally
                                     ) {
                                         IconButton(
                                             onClick = { cameraPermissionLauncher.launch(Manifest.permission.CAMERA) },
@@ -767,14 +795,10 @@ fun ChatScreen() {
                                     
                                     // 视频按钮
                                     Column(
-                                        horizontalAlignment = Alignment.CenterHorizontally,
-                                        modifier = Modifier.padding(end = 16.dp)  // 调整右间距
+                                        horizontalAlignment = Alignment.CenterHorizontally
                                     ) {
                                         IconButton(
-                                            onClick = { 
-                                                // 直接启动视频选择器，不需要请求存储权限
-                                                videoPickerLauncher.launch("video/*")
-                                            },
+                                            onClick = { videoPickerLauncher.launch("video/*") },
                                             modifier = Modifier
                                                 .size(48.dp)
                                                 .background(
@@ -801,13 +825,16 @@ fun ChatScreen() {
                                     
                                     // 文件按钮
                                     Column(
-                                        horizontalAlignment = Alignment.CenterHorizontally,
-                                        modifier = Modifier.padding(end = 32.dp)
+                                        horizontalAlignment = Alignment.CenterHorizontally
                                     ) {
                                         IconButton(
                                             onClick = { 
                                                 currentStorageAction = StorageAction.PICK_FILE
-                                                storagePermissionLauncher.launch(Manifest.permission.READ_EXTERNAL_STORAGE)
+                                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                                                    storagePermissionLauncher.launch(Manifest.permission.READ_MEDIA_IMAGES)
+                                                } else {
+                                                    storagePermissionLauncher.launch(Manifest.permission.READ_EXTERNAL_STORAGE)
+                                                }
                                             },
                                             modifier = Modifier
                                                 .size(48.dp)
@@ -1134,7 +1161,7 @@ fun MessageItem(message: ChatMessage) {
                             )
                         )
                     } else {
-                        // 如果没有缩略图，显示默认背景
+                        // 如果没��缩略图，显示默认背景
                         Box(
                             modifier = Modifier
                                 .fillMaxSize()
@@ -1241,8 +1268,6 @@ private fun startRecording(context: Context, recorder: MediaRecorder?, startTime
                 start()
             }
             onStart(newRecorder, file)
-        } else {
-            Toast.makeText(context, "需要存储权限才能录音", Toast.LENGTH_SHORT).show()
         }
     }
 }
