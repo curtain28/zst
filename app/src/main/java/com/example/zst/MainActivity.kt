@@ -774,19 +774,56 @@ fun MessageItem(message: ChatMessage) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Icon(
-                                painter = painterResource(
-                                    id = if (isPlaying) {
-                                        R.drawable.ic_pause_audio
-                                    } else {
-                                        R.drawable.ic_play_audio
+                            if (isPlaying) {
+                                // 播放时显示动态音量条
+                                Row(
+                                    modifier = Modifier
+                                        .height(18.dp)
+                                        .width(24.dp),  // 保持与图标相同的宽度
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    repeat(4) { index ->
+                                        var animationState by remember { mutableStateOf(true) }
+                                        val animatedHeight by animateFloatAsState(
+                                            targetValue = if (animationState) 14f else 4f,
+                                            animationSpec = tween(
+                                                durationMillis = 300,
+                                                easing = FastOutSlowInEasing
+                                            ),
+                                            label = "volume_bar_$index"
+                                        )
+                                        
+                                        LaunchedEffect(Unit) {
+                                            while(true) {
+                                                delay(index * 50L)
+                                                animationState = !animationState
+                                                delay(300L)
+                                            }
+                                        }
+                                        
+                                        Box(
+                                            modifier = Modifier
+                                                .width(2.dp)
+                                                .height(with(LocalDensity.current) { animatedHeight.toDp() })
+                                                .background(
+                                                    color = Color.Black.copy(alpha = 0.6f),
+                                                    shape = RoundedCornerShape(0.75.dp)
+                                                )
+                                        )
                                     }
-                                ),
-                                contentDescription = if (isPlaying) "暂停语音" else "播放语音",
-                                tint = Color.Black,
-                                modifier = Modifier.size(24.dp)
-                            )
+                                }
+                            } else {
+                                // 未播放时显示播放图标
+                                Icon(
+                                    painter = painterResource(id = R.drawable.ic_play_audio),
+                                    contentDescription = "播放语音",
+                                    tint = Color.Black,
+                                    modifier = Modifier.size(24.dp)
+                                )
+                            }
                         }
+                        
                         Text(
                             text = "${message.duration / 1000}\"",
                             color = Color.Black
