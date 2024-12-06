@@ -385,7 +385,7 @@ fun ChatScreen() {
                     .setMessage("需要存储权限才能选择文件")
                     .setPositiveButton("去设置") { _, _ ->
                         try {
-                            // 打开应用设页面
+                            // 打开应用设页���
                             val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
                                 data = Uri.fromParts("package", it.packageName, null)
                             }
@@ -1324,23 +1324,25 @@ private fun shouldAddTimestamp(messages: List<ChatMessage>, lastMessage: ChatMes
         ?.let { (it as ChatMessage.TimestampMessage).timestamp }
         ?: 0L
     
-    // 获取上一个时间戳之后的最后一条消息的时间
-    val lastMessageAfterTimestamp = messages.dropWhile { 
-        it is ChatMessage.TimestampMessage && it.timestamp <= lastTimestampTime 
-    }.firstOrNull()?.let {
-        when (it) {
-            is ChatMessage.TextMessage -> it.timestamp
-            is ChatMessage.ImageMessage -> it.timestamp
-            is ChatMessage.AudioMessage -> it.timestamp
-            is ChatMessage.VideoMessage -> it.timestamp
-            is ChatMessage.FileMessage -> it.timestamp
-            is ChatMessage.TimestampMessage -> null
-        }
-    } ?: lastTimestampTime
+    // 获取上一条消息的时间
+    val lastMessageTime = when (lastMessage) {
+        is ChatMessage.TextMessage -> lastMessage.timestamp
+        is ChatMessage.ImageMessage -> lastMessage.timestamp
+        is ChatMessage.AudioMessage -> lastMessage.timestamp
+        is ChatMessage.VideoMessage -> lastMessage.timestamp
+        is ChatMessage.FileMessage -> lastMessage.timestamp
+        is ChatMessage.TimestampMessage -> return false
+    }
     
-    return lastTimestampTime == 0L || 
-           (currentTime - lastTimestampTime) >= TimeUnit.MINUTES.toMillis(5) ||
-           (currentTime - lastMessageAfterTimestamp) >= TimeUnit.MINUTES.toMillis(1)
+    // 修改为3分钟的间隔
+    val THREE_MINUTES = TimeUnit.MINUTES.toMillis(3)
+    
+    // 添加时间戳的条件:
+    // 1. 是第一条消息
+    // 2. 距离上一个时间戳超过3分钟
+    return messages.isEmpty() || 
+           (lastTimestampTime == 0L && currentTime - lastMessageTime >= THREE_MINUTES) ||
+           (lastTimestampTime > 0L && currentTime - lastTimestampTime >= THREE_MINUTES)
 }
 
 private fun formatTimestamp(timestamp: Long): String {
