@@ -71,6 +71,7 @@ import androidx.compose.animation.shrinkVertically
 import androidx.compose.ui.unit.Dp
 import kotlinx.coroutines.delay
 import androidx.compose.animation.core.FastOutSlowInEasing
+import android.media.MediaMetadataRetriever
 
 // 修改消息数据类以支持不同类型的消息
 sealed class ChatMessage {
@@ -84,9 +85,9 @@ sealed class ChatMessage {
         val isFromMe: Boolean = true
     ) : ChatMessage()
     
-    data class VoiceMessage(
+    data class AudioMessage(
         val audioFile: String, 
-        val duration: Int, // 语音时长（秒）
+        val duration: Long, // 使用实际的音频时长，单位为毫秒
         val isFromMe: Boolean = true
     ) : ChatMessage()
 }
@@ -215,15 +216,16 @@ fun ChatScreen() {
     // 录音相关状态
     var isRecording by remember { mutableStateOf(false) }
     var recorder by remember { mutableStateOf<MediaRecorder?>(null) }
+    var recordStartTime by remember { mutableStateOf(0L) }
     var recordingStartTime by remember { mutableStateOf(0L) }
     var audioFile by remember { mutableStateOf<File?>(null) }
     
     // 添加停止录音的函数
     fun stopRecordingAndSend() {
         if (isRecording) {
-            stopRecording(recorder) { duration ->
+            stopRecording(recorder, recordStartTime) { duration ->
                 audioFile?.let { file ->
-                    messages = messages + ChatMessage.VoiceMessage(
+                    messages = messages + ChatMessage.AudioMessage(
                         audioFile = file.absolutePath,
                         duration = duration,
                         isFromMe = true
@@ -241,12 +243,12 @@ fun ChatScreen() {
         ActivityResultContracts.RequestPermission()
     ) { isGranted: Boolean ->
         if (isGranted) {
-            // 权限获取成功后开始录音
-            startRecording(context, recorder) { newRecorder, file ->
+            val currentTime = System.currentTimeMillis()
+            recordStartTime = currentTime
+            startRecording(context, recorder, currentTime) { newRecorder, file ->
                 recorder = newRecorder
                 audioFile = file
                 isRecording = true
-                recordingStartTime = System.currentTimeMillis()
             }
         } else {
             // 可以添加权限被拒绝时的提示
@@ -601,7 +603,7 @@ fun MessageItem(message: ChatMessage) {
         horizontalArrangement = if (when(message) {
             is ChatMessage.TextMessage -> message.isFromMe
             is ChatMessage.ImageMessage -> message.isFromMe
-            is ChatMessage.VoiceMessage -> message.isFromMe
+            is ChatMessage.AudioMessage -> message.isFromMe
         }) Arrangement.End else Arrangement.Start
     ) {
         when (message) {
@@ -647,12 +649,11 @@ fun MessageItem(message: ChatMessage) {
                     }
                 )
             }
-            is ChatMessage.VoiceMessage -> {
+            is ChatMessage.AudioMessage -> {
                 Surface(
                     shape = RoundedCornerShape(8.dp),
                     color = if (message.isFromMe) Color(0xFF95EC69) else Color.LightGray,
                     modifier = Modifier.clickable {
-                        // 点击播放语音
                         playVoice(message.audioFile)
                     }
                 ) {
@@ -667,7 +668,7 @@ fun MessageItem(message: ChatMessage) {
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = "${message.duration}\"",
+                            text = "${message.duration / 1000}\"",
                             color = Color.Black
                         )
                     }
@@ -678,7 +679,7 @@ fun MessageItem(message: ChatMessage) {
 }
 
 // 录音相关的辅助函数保持在外部
-private fun startRecording(context: Context, recorder: MediaRecorder?, onStart: (MediaRecorder, File) -> Unit) {
+private fun startRecording(context: Context, recorder: MediaRecorder?, startTime: Long, onStart: (MediaRecorder, File) -> Unit) {
     val file = File(context.cacheDir, "audio_${System.currentTimeMillis()}.mp3")
     val newRecorder = MediaRecorder().apply {
         setAudioSource(MediaRecorder.AudioSource.MIC)
@@ -691,12 +692,18 @@ private fun startRecording(context: Context, recorder: MediaRecorder?, onStart: 
     onStart(newRecorder, file)
 }
 
-private fun stopRecording(recorder: MediaRecorder?, onStop: (Int) -> Unit) {
-    recorder?.apply {
-        stop()
-        release()
+private fun stopRecording(recorder: MediaRecorder?, startTime: Long, onStop: (Long) -> Unit) {
+    val duration = try {
+        recorder?.apply {
+            stop()
+            release()
+        }
+        // 计算实际录音时长（毫秒）
+        System.currentTimeMillis() - startTime
+    } catch (e: Exception) {
+        1000L // 发生错误时的默认值为1秒
     }
-    onStop(3) // 这里可以计算实际的录音时长
+    onStop(duration)
 }
 
 // 添加语音播放功能
