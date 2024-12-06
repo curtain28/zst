@@ -227,12 +227,15 @@ fun ChatScreen() {
     // 在 ChatScreen 函数中添加计时器相关的状态
     var recordingTimer: Job? by remember { mutableStateOf(null) }
     
+    // 添加剩余时间状态
+    var remainingTime by remember { mutableStateOf(60) }  // 初始60秒
+    
     // 添加停止录音的函数
     fun stopRecordingAndSend() {
         if (isRecording) {
-            // 取消计时器
             recordingTimer?.cancel()
             recordingTimer = null
+            remainingTime = 60  // 重置剩余时间
             
             stopRecording(recorder, recordStartTime) { duration ->
                 audioFile?.let { file ->
@@ -256,14 +259,18 @@ fun ChatScreen() {
         if (isGranted) {
             val currentTime = System.currentTimeMillis()
             recordStartTime = currentTime
+            remainingTime = 60  // 重置剩余时间
             startRecording(context, recorder, currentTime) { newRecorder, file ->
                 recorder = newRecorder
                 audioFile = file
                 isRecording = true
                 
-                // 启动60秒计时器
+                // 启动60秒计时器，同时更新剩余时间显示
                 recordingTimer = CoroutineScope(Dispatchers.Main).launch {
-                    delay(60000) // 60秒
+                    repeat(60) {
+                        delay(1000)  // 每秒更新一次
+                        remainingTime = 59 - it
+                    }
                     if (isRecording) {
                         stopRecordingAndSend()
                     }
@@ -537,31 +544,30 @@ fun ChatScreen() {
         ) {
             Surface(
                 modifier = Modifier
-                    .size(110.dp)
+                    .size(130.dp)  // 增加一点高度
                     .animateContentSize(),
                 shape = RoundedCornerShape(12.dp),
                 color = Color(0x88000000)
             ) {
                 Column(
-                    modifier = Modifier.padding(10.dp),
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(10.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center
+                    verticalArrangement = Arrangement.SpaceEvenly  // 改为均匀分布
                 ) {
                     // 麦克风图标
                     Icon(
                         painter = painterResource(id = R.drawable.ic_mic),
                         contentDescription = "录音中",
                         tint = Color.White.copy(alpha = 0.9f),
-                        modifier = Modifier
-                            .size(42.dp)
-                            .padding(bottom = 8.dp)
+                        modifier = Modifier.size(42.dp)
                     )
                     
                     // 音量动画效果
                     Row(
                         modifier = Modifier
-                            .height(18.dp)
-                            .padding(vertical = 3.dp),
+                            .height(18.dp),
                         horizontalArrangement = Arrangement.spacedBy(4.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -596,13 +602,22 @@ fun ChatScreen() {
                         }
                     }
                     
-                    // 提示文本
-                    Text(
-                        text = "松开发送",
-                        color = Color.White.copy(alpha = 0.9f),
-                        fontSize = 16.sp,
-                        modifier = Modifier.padding(top = 8.dp)
-                    )
+                    // 提示文本和剩余时间
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Text(
+                            text = "松开发送",
+                            color = Color.White.copy(alpha = 0.9f),
+                            fontSize = 16.sp
+                        )
+                        Text(
+                            text = "${remainingTime}s",  // 简化显示
+                            color = Color.White.copy(alpha = 0.7f),
+                            fontSize = 14.sp
+                        )
+                    }
                 }
             }
         }
