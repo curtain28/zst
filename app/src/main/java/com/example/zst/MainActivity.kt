@@ -626,10 +626,10 @@ fun MessageItem(message: ChatMessage) {
     ) {
         when (message) {
             is ChatMessage.TextMessage -> {
-                // 文本消息保持原有的气泡样式
                 Surface(
                     shape = RoundedCornerShape(8.dp),
-                    color = if (message.isFromMe) Color(0xFF95EC69) else Color.LightGray
+                    color = if (message.isFromMe) Color(0xFF95EC69) else Color.LightGray,
+                    modifier = Modifier.widthIn(max = 250.dp)
                 ) {
                     Text(
                         text = message.content,
