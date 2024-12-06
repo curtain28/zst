@@ -490,20 +490,18 @@ fun ChatScreen() {
                             ) {
                                 Icon(
                                     painter = painterResource(id = R.drawable.ic_more),
-                                    contentDescription = "更多功能",
-                                    tint = Color.Gray
+                                    contentDescription = "更多功能"
                                 )
                             }
                             
                             // 发送按钮
                             IconButton(
                                 onClick = { sendMessage() },
-                                modifier = Modifier.size(24.dp)
+                                modifier = Modifier.size(28.dp)
                             ) {
                                 Icon(
-                                    imageVector = Icons.Default.Send,
-                                    contentDescription = "发送",
-                                    tint = Color(0xFF95EC69)
+                                    painter = painterResource(id = R.drawable.ic_send_message),
+                                    contentDescription = "发送"
                                 )
                             }
                         }
