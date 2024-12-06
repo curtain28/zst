@@ -76,23 +76,32 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Job
+import java.util.concurrent.TimeUnit
+import android.text.format.DateUtils
 
 // 修改消息数据类以支持不同类型的消息
 sealed class ChatMessage {
     data class TextMessage(
         val content: String,
-        val isFromMe: Boolean = true
+        val isFromMe: Boolean = true,
+        val timestamp: Long = System.currentTimeMillis()
     ) : ChatMessage()
     
     data class ImageMessage(
         val imageUrl: String,
-        val isFromMe: Boolean = true
+        val isFromMe: Boolean = true,
+        val timestamp: Long = System.currentTimeMillis()
     ) : ChatMessage()
     
     data class AudioMessage(
-        val audioFile: String, 
-        val duration: Long, // 使用实际的音频时长，单位为毫秒
-        val isFromMe: Boolean = true
+        val audioFile: String,
+        val duration: Long,
+        val isFromMe: Boolean = true,
+        val timestamp: Long = System.currentTimeMillis()
+    ) : ChatMessage()
+    
+    data class TimestampMessage(
+        val timestamp: Long = System.currentTimeMillis()
     ) : ChatMessage()
 }
 
@@ -209,8 +218,15 @@ fun ChatScreen() {
     // 添加发送消息的函数
     fun sendMessage() {
         if (message.isNotBlank()) {
+            val currentTime = System.currentTimeMillis()
+            
+            // 检查是否需要添加时间戳
+            if (messages.isEmpty() || shouldAddTimestamp(messages.last(), currentTime)) {
+                messages = messages + ChatMessage.TimestampMessage(currentTime)
+            }
+            
             messages = messages + ChatMessage.TextMessage(message)
-            message = ""  // 清空输入框
+            message = ""
         }
     }
     
@@ -395,7 +411,7 @@ fun ChatScreen() {
                                     painter = painterResource(
                                         id = if (isVoiceMode) R.drawable.ic_keyboard else R.drawable.ic_voice
                                     ),
-                                    contentDescription = if (isVoiceMode) "切换到键盘" else "切换到语音",
+                                    contentDescription = if (isVoiceMode) "切换到键盘" else "切换���语音",
                                     tint = Color.Gray
                                 )
                             }
@@ -600,10 +616,32 @@ fun ChatScreen() {
                     .fillMaxSize()
                     .padding(paddingValues)
                     .padding(horizontal = 16.dp),
-                reverseLayout = true  // 新消息显示在底部
+                reverseLayout = true
             ) {
                 items(messages.asReversed()) { chatMessage ->
-                    MessageItem(chatMessage)
+                    when (chatMessage) {
+                        is ChatMessage.TimestampMessage -> {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 8.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = formatTimestamp(chatMessage.timestamp),
+                                    modifier = Modifier
+                                        .background(
+                                            color = Color(0x1F000000),
+                                            shape = RoundedCornerShape(12.dp)
+                                        )
+                                        .padding(horizontal = 12.dp, vertical = 6.dp),
+                                    color = Color(0x99000000),
+                                    fontSize = 12.sp
+                                )
+                            }
+                        }
+                        else -> MessageItem(chatMessage)
+                    }
                 }
             }
         }
@@ -705,6 +743,8 @@ fun MessageItem(message: ChatMessage) {
             is ChatMessage.TextMessage -> message.isFromMe
             is ChatMessage.ImageMessage -> message.isFromMe
             is ChatMessage.AudioMessage -> message.isFromMe
+            is ChatMessage.TimestampMessage -> false  // 添加时间戳消息的处理
+            // else -> false  // 如果需要的话也可以添加 else 分支
         }) Arrangement.End else Arrangement.Start
     ) {
         when (message) {
@@ -835,6 +875,9 @@ fun MessageItem(message: ChatMessage) {
                     }
                 }
             }
+            is ChatMessage.TimestampMessage -> {
+                // 时间戳消息不需要在这里处理，因为已经在外层处理了
+            }
         }
     }
 }
@@ -872,5 +915,45 @@ private fun stopRecording(recorder: MediaRecorder?, startTime: Long, onStop: (Lo
 fun ChatScreenPreview() {
     ZstTheme {
         ChatScreen()
+    }
+}
+
+// 添加辅助函数
+private fun shouldAddTimestamp(lastMessage: ChatMessage, currentTime: Long): Boolean {
+    // 获取上一条消息的时间
+    val lastTime = when (lastMessage) {
+        is ChatMessage.TextMessage -> lastMessage.timestamp
+        is ChatMessage.ImageMessage -> lastMessage.timestamp
+        is ChatMessage.AudioMessage -> lastMessage.timestamp
+        is ChatMessage.TimestampMessage -> return false // 如果上一条是时间戳，不添加新的时间戳
+        else -> return false // 处理其他可能的情况
+    }
+    
+    // 如果间隔超过3分钟，添加新的时间戳
+    return (currentTime - lastTime) >= TimeUnit.MINUTES.toMillis(3)
+}
+
+private fun formatTimestamp(timestamp: Long): String {
+    val calendar = Calendar.getInstance()
+    val now = calendar.timeInMillis
+    calendar.timeInMillis = timestamp
+    
+    return when {
+        // 今天的消息只显示时间
+        DateUtils.isToday(timestamp) -> {
+            SimpleDateFormat("HH:mm", Locale.getDefault()).format(timestamp)
+        }
+        // 昨天的消息显示"昨天 HH:mm"
+        DateUtils.isToday(timestamp + TimeUnit.DAYS.toMillis(1)) -> {
+            "昨天 ${SimpleDateFormat("HH:mm", Locale.getDefault()).format(timestamp)}"
+        }
+        // 今年的消息显示"MM-dd HH:mm"
+        calendar.get(Calendar.YEAR) == Calendar.getInstance().get(Calendar.YEAR) -> {
+            SimpleDateFormat("MM-dd HH:mm", Locale.getDefault()).format(timestamp)
+        }
+        // 其他时间显示完整日期"yyyy-MM-dd HH:mm"
+        else -> {
+            SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(timestamp)
+        }
     }
 }
