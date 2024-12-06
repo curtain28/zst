@@ -1367,12 +1367,11 @@ fun MessageItem(message: ChatMessage) {
                         modifier = Modifier.padding(12.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        // 文件图标
-                        Icon(
-                            painter = painterResource(id = R.drawable.ic_file),
-                            contentDescription = "文件",
-                            tint = Color(0xFF2196F3),
-                            modifier = Modifier.size(36.dp)
+                        // 使用新的 FileIcon 组件
+                        FileIcon(
+                            mimeType = message.mimeType,
+                            fileUri = message.fileUri,
+                            modifier = Modifier
                         )
                         
                         Spacer(modifier = Modifier.width(12.dp))
@@ -1538,5 +1537,54 @@ private fun formatFileSize(size: Long): String {
     val units = arrayOf("B", "KB", "MB", "GB", "TB")
     val digitGroups = (Math.log10(size.toDouble()) / Math.log10(1024.0)).toInt()
     return String.format("%.1f %s", size / Math.pow(1024.0, digitGroups.toDouble()), units[digitGroups])
+}
+
+@Composable
+fun FileIcon(mimeType: String, fileUri: String? = null, modifier: Modifier = Modifier) {
+    val iconRes = when {
+        mimeType.startsWith("image/") -> R.drawable.ic_image
+        mimeType.startsWith("video/") -> R.drawable.ic_video
+        mimeType.startsWith("audio/") -> R.drawable.ic_audio
+        mimeType.startsWith("text/") -> R.drawable.ic_text
+        mimeType.startsWith("application/pdf") -> R.drawable.ic_pdf
+        mimeType.startsWith("application/msword") || 
+        mimeType.startsWith("application/vnd.openxmlformats-officedocument.wordprocessingml") -> R.drawable.ic_doc
+        mimeType.startsWith("application/vnd.ms-excel") || 
+        mimeType.startsWith("application/vnd.openxmlformats-officedocument.spreadsheetml") -> R.drawable.ic_excel
+        mimeType.startsWith("application/vnd.ms-powerpoint") || 
+        mimeType.startsWith("application/vnd.openxmlformats-officedocument.presentationml") -> R.drawable.ic_ppt
+        else -> R.drawable.ic_file
+    }
+    
+    when {
+        mimeType.startsWith("image/") && fileUri != null -> {
+            GlideImage(
+                imageModel = { fileUri },
+                modifier = modifier
+                    .size(36.dp)
+                    .clip(RoundedCornerShape(4.dp)),
+                imageOptions = ImageOptions(
+                    contentScale = ContentScale.Crop,
+                    alignment = Alignment.Center
+                ),
+                failure = {
+                    Icon(
+                        painter = painterResource(id = iconRes),
+                        contentDescription = "文件类型",
+                        tint = Color(0xFF2196F3),
+                        modifier = modifier.size(36.dp)
+                    )
+                }
+            )
+        }
+        else -> {
+            Icon(
+                painter = painterResource(id = iconRes),
+                contentDescription = "文件类型",
+                tint = Color(0xFF2196F3),
+                modifier = modifier.size(36.dp)
+            )
+        }
+    }
 }
 
