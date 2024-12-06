@@ -102,9 +102,11 @@ fun ChatScreen() {
                         .fillMaxWidth()
                         .windowInsetsPadding(
                             WindowInsets.navigationBars.only(WindowInsetsSides.Horizontal)
-                        ),
+                        )
+                        .padding(vertical = 4.dp),
                     color = Color.White,
-                    shadowElevation = 8.dp
+                    shadowElevation = 0.dp,
+                    tonalElevation = 2.dp
                 ) {
                     Row(
                         modifier = Modifier
