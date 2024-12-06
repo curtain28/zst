@@ -316,11 +316,19 @@ fun ChatScreen() {
                                         .padding(horizontal = 12.dp, vertical = 6.dp)
                                         .pointerInput(Unit) {
                                             detectTapGestures(
-                                                onPress = {
+                                                onLongPress = {
+                                                    // 长按开始录音
                                                     audioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
-                                                    tryAwaitRelease()
-                                                    if (isRecording) {
-                                                        stopRecordingAndSend()
+                                                },
+                                                onPress = {
+                                                    // 等待释放
+                                                    try {
+                                                        awaitRelease()
+                                                    } finally {
+                                                        // 释放时停止录音
+                                                        if (isRecording) {
+                                                            stopRecordingAndSend()
+                                                        }
                                                     }
                                                 }
                                             )
