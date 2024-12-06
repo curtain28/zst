@@ -249,6 +249,11 @@ fun ChatScreen() {
     var message by remember { mutableStateOf("") }
     var messages by remember { mutableStateOf(listOf<ChatMessage>()) }
     var currentStorageAction by remember { mutableStateOf<StorageAction?>(null) }
+    var showImagePicker by remember { mutableStateOf(false) }
+    var showImagePreview by remember { mutableStateOf(false) }
+    var previewImageUri by remember { mutableStateOf<Uri?>(null) }
+    var showMorePanel by remember { mutableStateOf(false) }
+    val selectedImages = remember { mutableStateListOf<Uri>() }
     
     // 获取 context
     val context = LocalContext.current
@@ -380,7 +385,7 @@ fun ChatScreen() {
                     .setMessage("需要存储权限才能选择文件")
                     .setPositiveButton("去设置") { _, _ ->
                         try {
-                            // 打开应用设置页面
+                            // 打开应用设���页面
                             val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
                                 data = Uri.fromParts("package", it.packageName, null)
                             }
@@ -404,7 +409,12 @@ fun ChatScreen() {
         val listener = ViewTreeObserver.OnGlobalLayoutListener {
             val insets = ViewCompat.getRootWindowInsets(view)
             val imeHeight = insets?.getInsets(WindowInsetsCompat.Type.ime())?.bottom ?: 0
-            keyboardHeight = with(density) { imeHeight.toDp().value }  // 转换为 dp
+            keyboardHeight = with(density) { imeHeight.toDp().value }
+            
+            // 当键盘弹起时，自动收起更多面板
+            if (imeHeight > 0 && showMorePanel) {
+                showMorePanel = false
+            }
         }
         
         view.viewTreeObserver.addOnGlobalLayoutListener(listener)
@@ -444,12 +454,6 @@ fun ChatScreen() {
             imagePickerLauncher.launch("image/*")
         }
     }
-    
-    // 添加状态
-    var showImagePicker by remember { mutableStateOf(false) }
-    var showImagePreview by remember { mutableStateOf(false) }
-    var previewImageUri by remember { mutableStateOf<Uri?>(null) }
-    val selectedImages = remember { mutableStateListOf<Uri>() }
     
     // 拍照URI
     var photoUri by remember { mutableStateOf<Uri?>(null) }
@@ -564,9 +568,6 @@ fun ChatScreen() {
     
     // 添加语音模式状态
     var isVoiceMode by remember { mutableStateOf(false) }
-    
-    // 添加更多面板显示状态
-    var showMorePanel by remember { mutableStateOf(false) }
     
     Box(
         modifier = Modifier
@@ -1290,7 +1291,7 @@ private fun stopRecording(recorder: MediaRecorder?, startTime: Long, onStop: (Lo
             stop()
             release()
         }
-        // 计算实际录音时长（毫秒）
+        // 计算实际录时长毫秒）
         System.currentTimeMillis() - startTime
     } catch (e: Exception) {
         1000L // 发生错误时的默认值为1秒
