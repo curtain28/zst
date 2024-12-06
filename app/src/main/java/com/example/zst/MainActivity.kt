@@ -72,6 +72,10 @@ import androidx.compose.ui.unit.Dp
 import kotlinx.coroutines.delay
 import androidx.compose.animation.core.FastOutSlowInEasing
 import android.media.MediaMetadataRetriever
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.Job
 
 // 修改消息数据类以支持不同类型的消息
 sealed class ChatMessage {
@@ -220,14 +224,21 @@ fun ChatScreen() {
     var recordingStartTime by remember { mutableStateOf(0L) }
     var audioFile by remember { mutableStateOf<File?>(null) }
     
+    // 在 ChatScreen 函数中添加计时器相关的状态
+    var recordingTimer: Job? by remember { mutableStateOf(null) }
+    
     // 添加停止录音的函数
     fun stopRecordingAndSend() {
         if (isRecording) {
+            // 取消计时器
+            recordingTimer?.cancel()
+            recordingTimer = null
+            
             stopRecording(recorder, recordStartTime) { duration ->
                 audioFile?.let { file ->
                     messages = messages + ChatMessage.AudioMessage(
                         audioFile = file.absolutePath,
-                        duration = duration,
+                        duration = duration.coerceAtMost(60000), // 确保时长不超过60秒
                         isFromMe = true
                     )
                 }
@@ -238,7 +249,7 @@ fun ChatScreen() {
         }
     }
     
-    // 录音权限请求
+    // 修改录音权限请求的处理函数
     val audioPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { isGranted: Boolean ->
@@ -249,9 +260,16 @@ fun ChatScreen() {
                 recorder = newRecorder
                 audioFile = file
                 isRecording = true
+                
+                // 启动60秒计时器
+                recordingTimer = CoroutineScope(Dispatchers.Main).launch {
+                    delay(60000) // 60秒
+                    if (isRecording) {
+                        stopRecordingAndSend()
+                    }
+                }
             }
         } else {
-            // 可以添加权限被拒绝时的提示
             Toast.makeText(context, "需要录音权限才能使用语音功能", Toast.LENGTH_SHORT).show()
         }
     }
