@@ -96,48 +96,57 @@ sealed class ChatMessage {
     ) : ChatMessage()
 }
 
-// 在 ChatScreen 函数外部添加全局状态管理
+// 将全局状态改为可观察的状态
 private var currentPlayer: MediaPlayer? = null
-private var currentPlayingFile: String? = null
-private var isPlayerPlaying: Boolean = false
+private var _currentPlayingFile = mutableStateOf<String?>(null)
+private var _isPlayerPlaying = mutableStateOf(false)
 
 // 修改播放语音的函数
 private fun playVoice(audioFile: String) {
-    if (audioFile == currentPlayingFile && currentPlayer != null) {
-        // 如果点击的是当前正在播放的语音
-        if (isPlayerPlaying) {
-            // 如果正在播放，则暂停
-            currentPlayer?.pause()
-            isPlayerPlaying = false
+    try {
+        if (audioFile == _currentPlayingFile.value && currentPlayer != null) {
+            // 如果点击的是当前正在播放的语音
+            if (_isPlayerPlaying.value) {
+                // 如果正在播放，则暂停
+                currentPlayer?.pause()
+                _isPlayerPlaying.value = false
+            } else {
+                // 如果已暂停，则继续播放
+                currentPlayer?.start()
+                _isPlayerPlaying.value = true
+            }
         } else {
-            // 如果已暂停，则继续播放
-            currentPlayer?.start()
-            isPlayerPlaying = true
-        }
-    } else {
-        // 如果点击的是新的语音
-        // 停止并释放当前播放的语音
-        currentPlayer?.apply {
-            if (isPlaying) {
-                stop()
+            // 如果点击的是新的语音
+            // 停止并释放当前播放的语音
+            currentPlayer?.apply {
+                if (isPlaying) {
+                    stop()
+                }
+                release()
             }
-            release()
-        }
-        
-        // 创建并播放新的语音
-        currentPlayer = MediaPlayer().apply {
-            setDataSource(audioFile)
-            prepare()
-            start()
-            isPlayerPlaying = true
-            currentPlayingFile = audioFile
-            setOnCompletionListener { mp ->
-                isPlayerPlaying = false
-                currentPlayingFile = null
-                mp.release()
-                currentPlayer = null
+            
+            // 创建并播放新的语音
+            currentPlayer = MediaPlayer().apply {
+                setDataSource(audioFile)
+                prepare()
+                start()
+                _isPlayerPlaying.value = true
+                _currentPlayingFile.value = audioFile
+                setOnCompletionListener { mp ->
+                    _isPlayerPlaying.value = false
+                    _currentPlayingFile.value = null
+                    mp.release()
+                    currentPlayer = null
+                }
             }
         }
+    } catch (e: Exception) {
+        e.printStackTrace()
+        // 重置所有状态
+        currentPlayer?.release()
+        currentPlayer = null
+        _currentPlayingFile.value = null
+        _isPlayerPlaying.value = false
     }
 }
 
@@ -161,8 +170,8 @@ class MainActivity : ComponentActivity() {
             release()
         }
         currentPlayer = null
-        currentPlayingFile = null
-        isPlayerPlaying = false
+        _currentPlayingFile.value = null
+        _isPlayerPlaying.value = false
     }
 }
 
@@ -738,19 +747,21 @@ fun MessageItem(message: ChatMessage) {
                 )
             }
             is ChatMessage.AudioMessage -> {
-                val minWidth = 60.dp  // 最小宽度
-                val maxWidth = 180.dp  // 最大宽度
-                val maxDuration = 60000L  // 最大时长（60秒）
-                 
-                // 修正计算实际宽度的方式
+                val minWidth = 80.dp
+                val maxWidth = 200.dp
+                val maxDuration = 60000L
+                
                 val widthPercent = (message.duration.toFloat() / maxDuration).coerceIn(0f, 1f)
                 val width = minWidth + ((maxWidth - minWidth) * widthPercent)
+                
+                // 直接使用可观察状态
+                val isPlaying = _currentPlayingFile.value == message.audioFile && _isPlayerPlaying.value
                 
                 Surface(
                     shape = RoundedCornerShape(8.dp),
                     color = if (message.isFromMe) Color(0xFF95EC69) else Color.LightGray,
                     modifier = Modifier
-                        .width(width)  // 设置动态宽度
+                        .width(width)
                         .clickable {
                             playVoice(message.audioFile)
                         }
@@ -758,15 +769,22 @@ fun MessageItem(message: ChatMessage) {
                     Row(
                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween  // 让时长显示靠右
+                        horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Icon(
-                                imageVector = Icons.Default.PlayArrow,
-                                contentDescription = "播放语音",
-                                tint = Color.Black
+                                painter = painterResource(
+                                    id = if (isPlaying) {
+                                        R.drawable.ic_pause_audio
+                                    } else {
+                                        R.drawable.ic_play_audio
+                                    }
+                                ),
+                                contentDescription = if (isPlaying) "暂停语音" else "播放语音",
+                                tint = Color.Black,
+                                modifier = Modifier.size(24.dp)
                             )
                         }
                         Text(
