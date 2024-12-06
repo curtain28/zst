@@ -375,14 +375,21 @@ fun ChatScreen() {
                                 // 文本输入模式
                                 BasicTextField(
                                     value = message,
-                                    onValueChange = { message = it },
+                                    onValueChange = { newText ->
+                                        if (newText.endsWith('\n') && !newText.endsWith("\n\n")) {
+                                            message = newText.trimEnd()
+                                            sendMessage()
+                                        } else {
+                                            message = newText
+                                        }
+                                    },
                                     modifier = Modifier
                                         .weight(1f)
                                         .defaultMinSize(
                                             minHeight = 16.dp,
                                             minWidth = 1.dp
                                         )
-                                        .padding(horizontal = 8.dp)  // 添加水平内边距
+                                        .padding(horizontal = 8.dp)
                                         .background(
                                             color = Color(0xFFF7F7F7),
                                             shape = RoundedCornerShape(16.dp)
@@ -393,19 +400,9 @@ fun ChatScreen() {
                                         color = Color.Black,
                                         lineHeight = 16.sp
                                     ),
-                                    singleLine = true,
+                                    singleLine = false,
                                     decorationBox = { innerTextField ->
                                         Box {
-                                            if (message.isEmpty()) {
-                                                Text(
-                                                    "请输入消息",
-                                                    style = TextStyle(
-                                                        fontSize = 16.sp,
-                                                        color = Color.Gray,
-                                                        lineHeight = 16.sp
-                                                    )
-                                                )
-                                            }
                                             innerTextField()
                                         }
                                     }
@@ -671,7 +668,7 @@ fun MessageItem(message: ChatMessage) {
                 val minWidth = 60.dp  // 最小宽度
                 val maxWidth = 180.dp  // 最大宽度
                 val maxDuration = 60000L  // 最大时长（60秒）
-                
+                 
                 // 修正计算实际宽度的方式
                 val widthPercent = (message.duration.toFloat() / maxDuration).coerceIn(0f, 1f)
                 val width = minWidth + ((maxWidth - minWidth) * widthPercent)
