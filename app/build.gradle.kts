@@ -60,4 +60,5 @@ dependencies {
     implementation("androidx.compose.material3:material3:1.1.0")
     implementation("androidx.compose.ui:ui-tooling-preview:1.0.0")
     implementation("com.google.android.material:material:1.9.0")
+    implementation("com.github.skydoves:landscapist-glide:2.2.12")
 }
