@@ -61,7 +61,7 @@ import java.io.File
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.input.pointer.pointerInput
-import android.content.Context
+import android.content.ContentResolver
 import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.slideInVertically
@@ -81,6 +81,12 @@ import android.text.format.DateUtils
 import android.content.Intent
 import android.graphics.Bitmap
 import kotlinx.coroutines.withContext
+import android.provider.OpenableColumns
+import androidx.compose.ui.text.style.TextOverflow
+import android.content.Context
+import android.os.Build
+import android.os.Environment
+import android.provider.Settings
 
 // 修改消息数据类以支持不同类型的消息
 sealed class ChatMessage {
@@ -111,6 +117,15 @@ sealed class ChatMessage {
         val videoUri: String,
         val thumbnailUri: String? = null,  // 视频缩略图
         val duration: Long = 0L,           // 视频时长（毫秒）
+        val isFromMe: Boolean = true,
+        val timestamp: Long = System.currentTimeMillis()
+    ) : ChatMessage()
+    
+    data class FileMessage(
+        val fileName: String,
+        val fileUri: String,
+        val fileSize: Long,
+        val mimeType: String,
         val isFromMe: Boolean = true,
         val timestamp: Long = System.currentTimeMillis()
     ) : ChatMessage()
@@ -170,6 +185,11 @@ private fun playVoice(audioFile: String) {
     }
 }
 
+// 将枚举类移到函数外部
+private enum class StorageAction {
+    PICK_FILE
+}
+
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -193,12 +213,150 @@ class MainActivity : ComponentActivity() {
         _currentPlayingFile.value = null
         _isPlayerPlaying.value = false
     }
+    
+    // 将权限检查函数改为公开的
+    fun checkStoragePermissions(onResult: (Boolean) -> Unit) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            if (!Environment.isExternalStorageManager()) {
+                try {
+                    val intent = Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)
+                    startActivity(intent)
+                } catch (e: Exception) {
+                    onResult(false)
+                }
+            } else {
+                onResult(true)
+            }
+        } else {
+            onResult(true)
+        }
+    }
 }
 
 @Composable
 fun ChatScreen() {
+    // 状态变量
     var message by remember { mutableStateOf("") }
     var messages by remember { mutableStateOf(listOf<ChatMessage>()) }
+    var currentStorageAction by remember { mutableStateOf<StorageAction?>(null) }
+    
+    // 获取 context
+    val context = LocalContext.current
+    
+    // 添加图片选择器
+    val imagePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        uri?.let {
+            messages = messages + ChatMessage.ImageMessage(it.toString())
+        }
+    }
+    
+    // 添加视频选择器
+    val videoPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        uri?.let { videoUri ->
+            // 在协程中处理视频
+            CoroutineScope(Dispatchers.IO).launch {
+                // 获取视频缩略图
+                val thumbnail = try {
+                    val retriever = MediaMetadataRetriever()
+                    retriever.setDataSource(context, videoUri)
+                    val bitmap = retriever.getFrameAtTime(0)
+                    // 保存缩略图到缓存目录
+                    val thumbnailFile = File(context.cacheDir, "thumb_${System.currentTimeMillis()}.jpg")
+                    bitmap?.compress(Bitmap.CompressFormat.JPEG, 80, thumbnailFile.outputStream())
+                    thumbnailFile.absolutePath
+                } catch (e: Exception) {
+                    null
+                }
+                
+                // 获取视频时长
+                val duration = try {
+                    val retriever = MediaMetadataRetriever()
+                    retriever.setDataSource(context, videoUri)
+                    retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLong() ?: 0L
+                } catch (e: Exception) {
+                    0L
+                }
+                
+                // 在主线程中更新UI
+                withContext(Dispatchers.Main) {
+                    messages = messages + ChatMessage.VideoMessage(
+                        videoUri = videoUri.toString(),
+                        thumbnailUri = thumbnail,
+                        duration = duration
+                    )
+                }
+            }
+        }
+    }
+    
+    // 添加文件选择器
+    val filePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        uri?.let { fileUri ->
+            val activity = context as? MainActivity
+            activity?.checkStoragePermissions { granted ->
+                if (granted) {
+                    CoroutineScope(Dispatchers.IO).launch {
+                        val contentResolver = context.contentResolver
+                        val fileName = getFileName(contentResolver, fileUri)
+                        val fileSize = getFileSize(contentResolver, fileUri)
+                        val mimeType = getMimeType(contentResolver, fileUri)
+                        
+                        // 将文件复制到外部存储
+                        val directory = Environment.getExternalStorageDirectory()
+                        val destFile = File(directory, "ZST/Files/$fileName")
+                        destFile.parentFile?.mkdirs()
+                        
+                        try {
+                            contentResolver.openInputStream(fileUri)?.use { input ->
+                                destFile.outputStream().use { output ->
+                                    input.copyTo(output)
+                                }
+                            }
+                            
+                            withContext(Dispatchers.Main) {
+                                messages = messages + ChatMessage.FileMessage(
+                                    fileName = fileName ?: "未知文件",
+                                    fileUri = destFile.absolutePath,
+                                    fileSize = fileSize ?: destFile.length(),
+                                    mimeType = mimeType ?: "*/*"
+                                )
+                            }
+                        } catch (e: Exception) {
+                            withContext(Dispatchers.Main) {
+                                Toast.makeText(context, "文件保存失败", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    }
+                } else {
+                    Toast.makeText(context, "需要存储权限才能保存文件", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+    }
+    
+    // 添加存储权限请求
+    val storagePermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { isGranted: Boolean ->
+        if (isGranted) {
+            when (currentStorageAction) {
+                StorageAction.PICK_FILE -> filePickerLauncher.launch("*/*")
+                else -> {} // 处理其他情况
+            }
+        } else {
+            val message = when (currentStorageAction) {
+                StorageAction.PICK_FILE -> "需要存储权限才能选择文件"
+                else -> "需要存储权限"
+            }
+            Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+        }
+    }
     
     // 监听键盘状态
     var keyboardHeight by remember { mutableStateOf(0f) }
@@ -241,15 +399,6 @@ fun ChatScreen() {
         }
     }
     
-    // 添加图片选择器
-    val imagePickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent()
-    ) { uri: Uri? ->
-        uri?.let {
-            messages = messages + ChatMessage.ImageMessage(it.toString())
-        }
-    }
-    
     // 添加权限请求
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -287,9 +436,6 @@ fun ChatScreen() {
             }
         }
     }
-    
-    // 获取 context
-    val context = LocalContext.current
     
     // 添加相机权限请求
     val cameraPermissionLauncher = rememberLauncherForActivityResult(
@@ -380,58 +526,6 @@ fun ChatScreen() {
     
     // 添加更多面板显示状态
     var showMorePanel by remember { mutableStateOf(false) }
-    
-    // 添加视频选择器
-    val videoPickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent()
-    ) { uri: Uri? ->
-        uri?.let { videoUri ->
-            // 在协程中处理视频
-            CoroutineScope(Dispatchers.IO).launch {
-                // 获取视频缩略图
-                val thumbnail = try {
-                    val retriever = MediaMetadataRetriever()
-                    retriever.setDataSource(context, videoUri)
-                    val bitmap = retriever.getFrameAtTime(0)
-                    // 保存缩略图到缓存目录
-                    val thumbnailFile = File(context.cacheDir, "thumb_${System.currentTimeMillis()}.jpg")
-                    bitmap?.compress(Bitmap.CompressFormat.JPEG, 80, thumbnailFile.outputStream())
-                    thumbnailFile.absolutePath
-                } catch (e: Exception) {
-                    null
-                }
-                
-                // 获取视频时长
-                val duration = try {
-                    val retriever = MediaMetadataRetriever()
-                    retriever.setDataSource(context, videoUri)
-                    retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLong() ?: 0L
-                } catch (e: Exception) {
-                    0L
-                }
-                
-                // 在主线程中更新UI
-                withContext(Dispatchers.Main) {
-                    messages = messages + ChatMessage.VideoMessage(
-                        videoUri = videoUri.toString(),
-                        thumbnailUri = thumbnail,
-                        duration = duration
-                    )
-                }
-            }
-        }
-    }
-    
-    // 添加存储权限请求
-    val storagePermissionLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { isGranted: Boolean ->
-        if (isGranted) {
-            videoPickerLauncher.launch("video/*")
-        } else {
-            Toast.makeText(context, "需要存储权限才能保存视频", Toast.LENGTH_SHORT).show()
-        }
-    }
     
     Box(
         modifier = Modifier
@@ -677,7 +771,10 @@ fun ChatScreen() {
                                         modifier = Modifier.padding(end = 16.dp)  // 调整右间距
                                     ) {
                                         IconButton(
-                                            onClick = { videoPickerLauncher.launch("video/*") },
+                                            onClick = { 
+                                                // 直接启动视频选择器，不需要请求存储权限
+                                                videoPickerLauncher.launch("video/*")
+                                            },
                                             modifier = Modifier
                                                 .size(48.dp)
                                                 .background(
@@ -695,6 +792,40 @@ fun ChatScreen() {
                                         Spacer(modifier = Modifier.height(4.dp))
                                         Text(
                                             text = "视频",
+                                            style = TextStyle(
+                                                fontSize = 12.sp,
+                                                color = Color.Gray
+                                            )
+                                        )
+                                    }
+                                    
+                                    // 文件按钮
+                                    Column(
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                        modifier = Modifier.padding(end = 32.dp)
+                                    ) {
+                                        IconButton(
+                                            onClick = { 
+                                                currentStorageAction = StorageAction.PICK_FILE
+                                                storagePermissionLauncher.launch(Manifest.permission.READ_EXTERNAL_STORAGE)
+                                            },
+                                            modifier = Modifier
+                                                .size(48.dp)
+                                                .background(
+                                                    color = Color(0xFFF7F7F7),
+                                                    shape = RoundedCornerShape(8.dp)
+                                                )
+                                        ) {
+                                            Icon(
+                                                painter = painterResource(id = R.drawable.ic_file),
+                                                contentDescription = "文件",
+                                                tint = Color.Gray,
+                                                modifier = Modifier.size(24.dp)
+                                            )
+                                        }
+                                        Spacer(modifier = Modifier.height(4.dp))
+                                        Text(
+                                            text = "文件",
                                             style = TextStyle(
                                                 fontSize = 12.sp,
                                                 color = Color.Gray
@@ -844,6 +975,7 @@ fun MessageItem(message: ChatMessage) {
             is ChatMessage.AudioMessage -> message.isFromMe
             is ChatMessage.TimestampMessage -> false
             is ChatMessage.VideoMessage -> message.isFromMe
+            is ChatMessage.FileMessage -> message.isFromMe
         }) Arrangement.End else Arrangement.Start
     ) {
         when (message) {
@@ -1010,7 +1142,7 @@ fun MessageItem(message: ChatMessage) {
                         )
                     }
                     
-                    // 播放图标
+                    // 播放标
                     Icon(
                         painter = painterResource(id = R.drawable.ic_play_video),
                         contentDescription = "播放视频",
@@ -1038,22 +1170,81 @@ fun MessageItem(message: ChatMessage) {
                     }
                 }
             }
+            is ChatMessage.FileMessage -> {
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = if (message.isFromMe) Color(0xFF95EC69) else Color.LightGray,
+                    modifier = Modifier
+                        .widthIn(max = 280.dp)
+                        .clickable {
+                            try {
+                                val intent = Intent(Intent.ACTION_VIEW).apply {
+                                    setDataAndType(Uri.parse(message.fileUri), message.mimeType)
+                                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                }
+                                context.startActivity(intent)
+                            } catch (e: Exception) {
+                                Toast.makeText(context, "无法打开此类型的文件", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                ) {
+                    Row(
+                        modifier = Modifier.padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        // 文件图标
+                        Icon(
+                            painter = painterResource(id = R.drawable.ic_file),
+                            contentDescription = "文件",
+                            tint = Color.DarkGray,
+                            modifier = Modifier.size(36.dp)
+                        )
+                        
+                        Spacer(modifier = Modifier.width(12.dp))
+                        
+                        Column {
+                            Text(
+                                text = message.fileName,
+                                color = Color.Black,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = formatFileSize(message.fileSize),
+                                color = Color.DarkGray,
+                                fontSize = 12.sp
+                            )
+                        }
+                    }
+                }
+            }
         }
     }
 }
 
 // 录音相关的辅助函数保持在外部
 private fun startRecording(context: Context, recorder: MediaRecorder?, startTime: Long, onStart: (MediaRecorder, File) -> Unit) {
-    val file = File(context.cacheDir, "audio_${System.currentTimeMillis()}.mp3")
-    val newRecorder = MediaRecorder().apply {
-        setAudioSource(MediaRecorder.AudioSource.MIC)
-        setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
-        setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
-        setOutputFile(file.absolutePath)
-        prepare()
-        start()
+    val activity = context as? MainActivity
+    activity?.checkStoragePermissions { granted ->
+        if (granted) {
+            val directory = Environment.getExternalStorageDirectory()
+            val file = File(directory, "ZST/Audio/audio_${System.currentTimeMillis()}.mp3")
+            file.parentFile?.mkdirs()
+            
+            val newRecorder = MediaRecorder().apply {
+                setAudioSource(MediaRecorder.AudioSource.MIC)
+                setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
+                setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
+                setOutputFile(file.absolutePath)
+                prepare()
+                start()
+            }
+            onStart(newRecorder, file)
+        } else {
+            Toast.makeText(context, "需要存储权限才能录音", Toast.LENGTH_SHORT).show()
+        }
     }
-    onStart(newRecorder, file)
 }
 
 private fun stopRecording(recorder: MediaRecorder?, startTime: Long, onStop: (Long) -> Unit) {
@@ -1129,3 +1320,32 @@ private fun formatDuration(duration: Long): String {
         else -> String.format("%02d:%02d", minutes, seconds)
     }
 }
+
+// 添加辅助函数
+private fun getFileName(contentResolver: ContentResolver, uri: Uri): String? {
+    return contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+        val nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+        cursor.moveToFirst()
+        cursor.getString(nameIndex)
+    }
+}
+
+private fun getFileSize(contentResolver: ContentResolver, uri: Uri): Long? {
+    return contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+        val sizeIndex = cursor.getColumnIndex(OpenableColumns.SIZE)
+        cursor.moveToFirst()
+        cursor.getLong(sizeIndex)
+    }
+}
+
+private fun getMimeType(contentResolver: ContentResolver, uri: Uri): String? {
+    return contentResolver.getType(uri)
+}
+
+private fun formatFileSize(size: Long): String {
+    if (size <= 0) return "0 B"
+    val units = arrayOf("B", "KB", "MB", "GB", "TB")
+    val digitGroups = (Math.log10(size.toDouble()) / Math.log10(1024.0)).toInt()
+    return String.format("%.1f %s", size / Math.pow(1024.0, digitGroups.toDouble()), units[digitGroups])
+}
+
