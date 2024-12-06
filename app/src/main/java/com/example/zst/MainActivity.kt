@@ -11,7 +11,11 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.StartOffset
+import androidx.compose.animation.core.RepeatMode
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -64,6 +68,9 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.ui.unit.Dp
+import kotlinx.coroutines.delay
+import androidx.compose.animation.core.FastOutSlowInEasing
 
 // 修改消息数据类以支持不同类型的消息
 sealed class ChatMessage {
@@ -426,7 +433,7 @@ fun ChatScreen() {
                                     horizontalArrangement = Arrangement.Start,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    // 相册按钮
+                                    // 册按钮
                                     Column(
                                         horizontalAlignment = Alignment.CenterHorizontally,
                                         modifier = Modifier.padding(end = 24.dp)
@@ -502,6 +509,83 @@ fun ChatScreen() {
             ) {
                 items(messages.asReversed()) { chatMessage ->
                     MessageItem(chatMessage)
+                }
+            }
+        }
+        
+        // 录音悬浮指示器
+        AnimatedVisibility(
+            visible = isRecording,
+            modifier = Modifier.align(Alignment.Center)
+        ) {
+            Surface(
+                modifier = Modifier
+                    .size(110.dp)
+                    .animateContentSize(),
+                shape = RoundedCornerShape(12.dp),
+                color = Color(0x88000000)
+            ) {
+                Column(
+                    modifier = Modifier.padding(10.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    // 麦克风图标
+                    Icon(
+                        painter = painterResource(id = R.drawable.ic_mic),
+                        contentDescription = "录音中",
+                        tint = Color.White.copy(alpha = 0.9f),
+                        modifier = Modifier
+                            .size(42.dp)
+                            .padding(bottom = 8.dp)
+                    )
+                    
+                    // 音量动画效果
+                    Row(
+                        modifier = Modifier
+                            .height(18.dp)
+                            .padding(vertical = 3.dp),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        repeat(4) { index ->
+                            var animationState by remember { mutableStateOf(true) }
+                            val animatedHeight by animateFloatAsState(
+                                targetValue = if (animationState) 14f else 4f,
+                                animationSpec = tween(
+                                    durationMillis = 300,
+                                    easing = FastOutSlowInEasing
+                                ),
+                                label = "volume_bar_$index"
+                            )
+                            
+                            LaunchedEffect(Unit) {
+                                while(true) {
+                                    delay(index * 50L)
+                                    animationState = !animationState
+                                    delay(300L)
+                                }
+                            }
+                            
+                            Box(
+                                modifier = Modifier
+                                    .width(2.dp)
+                                    .height(with(LocalDensity.current) { animatedHeight.toDp() })
+                                    .background(
+                                        color = Color.White.copy(alpha = 0.9f),
+                                        shape = RoundedCornerShape(0.75.dp)
+                                    )
+                            )
+                        }
+                    }
+                    
+                    // 提示文本
+                    Text(
+                        text = "松开发送",
+                        color = Color.White.copy(alpha = 0.9f),
+                        fontSize = 16.sp,
+                        modifier = Modifier.padding(top = 8.dp)
+                    )
                 }
             }
         }
