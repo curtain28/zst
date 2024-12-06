@@ -96,6 +96,31 @@ sealed class ChatMessage {
     ) : ChatMessage()
 }
 
+// 在 ChatScreen 函数外部添加全局 MediaPlayer 管理
+private var currentPlayer: MediaPlayer? = null
+
+// 修改播放语音的函数
+private fun playVoice(audioFile: String) {
+    // 停止当前正在播放的语音
+    currentPlayer?.apply {
+        if (isPlaying) {
+            stop()
+        }
+        release()
+    }
+    
+    // 创建并播放新的语音
+    currentPlayer = MediaPlayer().apply {
+        setDataSource(audioFile)
+        prepare()
+        start()
+        setOnCompletionListener { mp ->
+            mp.release()
+            currentPlayer = null
+        }
+    }
+}
+
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -105,6 +130,18 @@ class MainActivity : ComponentActivity() {
                 ChatScreen()
             }
         }
+    }
+    
+    override fun onDestroy() {
+        super.onDestroy()
+        // 清理 MediaPlayer
+        currentPlayer?.apply {
+            if (isPlaying) {
+                stop()
+            }
+            release()
+        }
+        currentPlayer = null
     }
 }
 
@@ -748,18 +785,6 @@ private fun stopRecording(recorder: MediaRecorder?, startTime: Long, onStop: (Lo
         1000L // 发生错误时的默认值为1秒
     }
     onStop(duration)
-}
-
-// 添加语音播放功能
-private fun playVoice(audioFile: String) {
-    MediaPlayer().apply {
-        setDataSource(audioFile)
-        prepare()
-        start()
-        setOnCompletionListener { mp ->
-            mp.release()
-        }
-    }
 }
 
 @Preview(showBackground = true)
