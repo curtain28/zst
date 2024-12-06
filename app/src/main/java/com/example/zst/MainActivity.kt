@@ -293,6 +293,10 @@ fun ChatScreen() {
                 
                 // 在主线程中更新UI
                 withContext(Dispatchers.Main) {
+                    val currentTime = System.currentTimeMillis()
+                    if (messages.isEmpty() || shouldAddTimestamp(messages, messages.last(), currentTime)) {
+                        messages = messages + ChatMessage.TimestampMessage(currentTime)
+                    }
                     messages = messages + ChatMessage.VideoMessage(
                         videoUri = videoUri.toString(),
                         thumbnailUri = thumbnail,
@@ -330,6 +334,10 @@ fun ChatScreen() {
                             }
                             
                             withContext(Dispatchers.Main) {
+                                val currentTime = System.currentTimeMillis()
+                                if (messages.isEmpty() || shouldAddTimestamp(messages, messages.last(), currentTime)) {
+                                    messages = messages + ChatMessage.TimestampMessage(currentTime)
+                                }
                                 messages = messages + ChatMessage.FileMessage(
                                     fileName = fileName ?: "未知文件",
                                     fileUri = destFile.absolutePath,
@@ -419,7 +427,7 @@ fun ChatScreen() {
             val currentTime = System.currentTimeMillis()
             
             // 检查是否需要添加时间戳
-            if (messages.isEmpty() || shouldAddTimestamp(messages.last(), currentTime)) {
+            if (messages.isEmpty() || shouldAddTimestamp(messages, messages.last(), currentTime)) {
                 messages = messages + ChatMessage.TimestampMessage(currentTime)
             }
             
@@ -451,6 +459,10 @@ fun ChatScreen() {
         contract = ActivityResultContracts.GetMultipleContents()
     ) { uris: List<Uri> ->
         uris.forEach { uri ->
+            val currentTime = System.currentTimeMillis()
+            if (messages.isEmpty() || shouldAddTimestamp(messages, messages.last(), currentTime)) {
+                messages = messages + ChatMessage.TimestampMessage(currentTime)
+            }
             messages = messages + ChatMessage.ImageMessage(uri.toString())
         }
     }
@@ -1161,7 +1173,7 @@ fun MessageItem(message: ChatMessage) {
                             )
                         )
                     } else {
-                        // 如果没��缩略图，显示默认背景
+                        // 如果没有缩略图，显示默认背景
                         Box(
                             modifier = Modifier
                                 .fillMaxSize()
@@ -1294,19 +1306,35 @@ fun ChatScreenPreview() {
     }
 }
 
-// 添加辅助函数
-private fun shouldAddTimestamp(lastMessage: ChatMessage, currentTime: Long): Boolean {
-    // 获取上一条消息的时间
-    val lastTime = when (lastMessage) {
-        is ChatMessage.TextMessage -> lastMessage.timestamp
-        is ChatMessage.ImageMessage -> lastMessage.timestamp
-        is ChatMessage.AudioMessage -> lastMessage.timestamp
-        is ChatMessage.TimestampMessage -> return false // 如果上一条是时间戳，不添加新的时间戳
-        else -> return false // 处理其他可能的情况
+// 修改辅助函数
+private fun shouldAddTimestamp(messages: List<ChatMessage>, lastMessage: ChatMessage, currentTime: Long): Boolean {
+    // 如果上一条是时间戳，不添加新的时间戳
+    if (lastMessage is ChatMessage.TimestampMessage) {
+        return false
     }
     
-    // 如果间隔超3分钟，添加新的时间戳
-    return (currentTime - lastTime) >= TimeUnit.MINUTES.toMillis(3)
+    // 获取最后一个时间戳的时间
+    val lastTimestampTime = messages.findLast { it is ChatMessage.TimestampMessage }
+        ?.let { (it as ChatMessage.TimestampMessage).timestamp }
+        ?: 0L
+    
+    // 获取上一个时间戳之后的最后一条消息的时间
+    val lastMessageAfterTimestamp = messages.dropWhile { 
+        it is ChatMessage.TimestampMessage && it.timestamp <= lastTimestampTime 
+    }.firstOrNull()?.let {
+        when (it) {
+            is ChatMessage.TextMessage -> it.timestamp
+            is ChatMessage.ImageMessage -> it.timestamp
+            is ChatMessage.AudioMessage -> it.timestamp
+            is ChatMessage.VideoMessage -> it.timestamp
+            is ChatMessage.FileMessage -> it.timestamp
+            is ChatMessage.TimestampMessage -> null
+        }
+    } ?: lastTimestampTime
+    
+    return lastTimestampTime == 0L || 
+           (currentTime - lastTimestampTime) >= TimeUnit.MINUTES.toMillis(5) ||
+           (currentTime - lastMessageAfterTimestamp) >= TimeUnit.MINUTES.toMillis(1)
 }
 
 private fun formatTimestamp(timestamp: Long): String {
