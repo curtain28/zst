@@ -78,6 +78,9 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.Job
 import java.util.concurrent.TimeUnit
 import android.text.format.DateUtils
+import android.content.Intent
+import android.graphics.Bitmap
+import kotlinx.coroutines.withContext
 
 // 修改消息数据类以支持不同类型的消息
 sealed class ChatMessage {
@@ -101,6 +104,14 @@ sealed class ChatMessage {
     ) : ChatMessage()
     
     data class TimestampMessage(
+        val timestamp: Long = System.currentTimeMillis()
+    ) : ChatMessage()
+    
+    data class VideoMessage(
+        val videoUri: String,
+        val thumbnailUri: String? = null,  // 视频缩略图
+        val duration: Long = 0L,           // 视频时长（毫秒）
+        val isFromMe: Boolean = true,
         val timestamp: Long = System.currentTimeMillis()
     ) : ChatMessage()
 }
@@ -370,6 +381,58 @@ fun ChatScreen() {
     // 添加更多面板显示状态
     var showMorePanel by remember { mutableStateOf(false) }
     
+    // 添加视频选择器
+    val videoPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        uri?.let { videoUri ->
+            // 在协程中处理视频
+            CoroutineScope(Dispatchers.IO).launch {
+                // 获取视频缩略图
+                val thumbnail = try {
+                    val retriever = MediaMetadataRetriever()
+                    retriever.setDataSource(context, videoUri)
+                    val bitmap = retriever.getFrameAtTime(0)
+                    // 保存缩略图到缓存目录
+                    val thumbnailFile = File(context.cacheDir, "thumb_${System.currentTimeMillis()}.jpg")
+                    bitmap?.compress(Bitmap.CompressFormat.JPEG, 80, thumbnailFile.outputStream())
+                    thumbnailFile.absolutePath
+                } catch (e: Exception) {
+                    null
+                }
+                
+                // 获取视频时长
+                val duration = try {
+                    val retriever = MediaMetadataRetriever()
+                    retriever.setDataSource(context, videoUri)
+                    retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLong() ?: 0L
+                } catch (e: Exception) {
+                    0L
+                }
+                
+                // 在主线程中更新UI
+                withContext(Dispatchers.Main) {
+                    messages = messages + ChatMessage.VideoMessage(
+                        videoUri = videoUri.toString(),
+                        thumbnailUri = thumbnail,
+                        duration = duration
+                    )
+                }
+            }
+        }
+    }
+    
+    // 添加存储权限请求
+    val storagePermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { isGranted: Boolean ->
+        if (isGranted) {
+            videoPickerLauncher.launch("video/*")
+        } else {
+            Toast.makeText(context, "需要存储权限才能保存视频", Toast.LENGTH_SHORT).show()
+        }
+    }
+    
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -411,7 +474,7 @@ fun ChatScreen() {
                                     painter = painterResource(
                                         id = if (isVoiceMode) R.drawable.ic_keyboard else R.drawable.ic_voice
                                     ),
-                                    contentDescription = if (isVoiceMode) "切换到键盘" else "切换���语音",
+                                    contentDescription = if (isVoiceMode) "切换到键盘" else "切换语音",
                                     tint = Color.Gray
                                 )
                             }
@@ -540,14 +603,16 @@ fun ChatScreen() {
                                     .padding(top = 8.dp)
                             ) {
                                 Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.Start,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(top = 16.dp),  // 增加顶部间距
+                                    horizontalArrangement = Arrangement.Start,  // 改为 Start 对齐
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    // 册按钮
+                                    // 相册按钮
                                     Column(
                                         horizontalAlignment = Alignment.CenterHorizontally,
-                                        modifier = Modifier.padding(end = 24.dp)
+                                        modifier = Modifier.padding(start = 16.dp, end = 32.dp)  // 调整左右间距
                                     ) {
                                         IconButton(
                                             onClick = { multipleImagePickerLauncher.launch("image/*") },
@@ -577,7 +642,8 @@ fun ChatScreen() {
                                     
                                     // 相机按钮
                                     Column(
-                                        horizontalAlignment = Alignment.CenterHorizontally
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                        modifier = Modifier.padding(end = 32.dp)  // 调整右间距
                                     ) {
                                         IconButton(
                                             onClick = { cameraPermissionLauncher.launch(Manifest.permission.CAMERA) },
@@ -598,6 +664,37 @@ fun ChatScreen() {
                                         Spacer(modifier = Modifier.height(4.dp))
                                         Text(
                                             text = "相机",
+                                            style = TextStyle(
+                                                fontSize = 12.sp,
+                                                color = Color.Gray
+                                            )
+                                        )
+                                    }
+                                    
+                                    // 视频按钮
+                                    Column(
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                        modifier = Modifier.padding(end = 16.dp)  // 调整右间距
+                                    ) {
+                                        IconButton(
+                                            onClick = { videoPickerLauncher.launch("video/*") },
+                                            modifier = Modifier
+                                                .size(48.dp)
+                                                .background(
+                                                    color = Color(0xFFF7F7F7),
+                                                    shape = RoundedCornerShape(8.dp)
+                                                )
+                                        ) {
+                                            Icon(
+                                                painter = painterResource(id = R.drawable.ic_video),
+                                                contentDescription = "视频",
+                                                tint = Color.Gray,
+                                                modifier = Modifier.size(24.dp)
+                                            )
+                                        }
+                                        Spacer(modifier = Modifier.height(4.dp))
+                                        Text(
+                                            text = "视频",
                                             style = TextStyle(
                                                 fontSize = 12.sp,
                                                 color = Color.Gray
@@ -735,6 +832,8 @@ fun ChatScreen() {
 
 @Composable
 fun MessageItem(message: ChatMessage) {
+    val context = LocalContext.current
+    
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -743,8 +842,8 @@ fun MessageItem(message: ChatMessage) {
             is ChatMessage.TextMessage -> message.isFromMe
             is ChatMessage.ImageMessage -> message.isFromMe
             is ChatMessage.AudioMessage -> message.isFromMe
-            is ChatMessage.TimestampMessage -> false  // 添加时间戳消息的处理
-            // else -> false  // 如果需要的话也可以添加 else 分支
+            is ChatMessage.TimestampMessage -> false
+            is ChatMessage.VideoMessage -> message.isFromMe
         }) Arrangement.End else Arrangement.Start
     ) {
         when (message) {
@@ -878,6 +977,67 @@ fun MessageItem(message: ChatMessage) {
             is ChatMessage.TimestampMessage -> {
                 // 时间戳消息不需要在这里处理，因为已经在外层处理了
             }
+            is ChatMessage.VideoMessage -> {
+                Box(
+                    modifier = Modifier
+                        .size(200.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .clickable {
+                            // 点击播放视频
+                            val intent = Intent(Intent.ACTION_VIEW).apply {
+                                setDataAndType(Uri.parse(message.videoUri), "video/*")
+                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                            }
+                            context.startActivity(intent)
+                        }
+                ) {
+                    // 显示视频缩略图
+                    if (message.thumbnailUri != null) {
+                        GlideImage(
+                            imageModel = { message.thumbnailUri },
+                            modifier = Modifier.fillMaxSize(),
+                            imageOptions = ImageOptions(
+                                contentScale = ContentScale.Crop,
+                                alignment = Alignment.Center
+                            )
+                        )
+                    } else {
+                        // 如果没有缩略图，显示默认背景
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(Color.Black)
+                        )
+                    }
+                    
+                    // 播放图标
+                    Icon(
+                        painter = painterResource(id = R.drawable.ic_play_video),
+                        contentDescription = "播放视频",
+                        tint = Color.White,
+                        modifier = Modifier
+                            .size(48.dp)
+                            .align(Alignment.Center)
+                    )
+                    
+                    // 视频时长
+                    if (message.duration > 0) {
+                        Text(
+                            text = formatDuration(message.duration),
+                            color = Color.White,
+                            fontSize = 12.sp,
+                            modifier = Modifier
+                                .align(Alignment.BottomEnd)
+                                .padding(8.dp)
+                                .background(
+                                    color = Color.Black.copy(alpha = 0.6f),
+                                    shape = RoundedCornerShape(4.dp)
+                                )
+                                .padding(horizontal = 4.dp, vertical = 2.dp)
+                        )
+                    }
+                }
+            }
         }
     }
 }
@@ -929,7 +1089,7 @@ private fun shouldAddTimestamp(lastMessage: ChatMessage, currentTime: Long): Boo
         else -> return false // 处理其他可能的情况
     }
     
-    // 如果间隔超过3分钟，添加新的时间戳
+    // 如果间隔超3分钟，添加新的时间戳
     return (currentTime - lastTime) >= TimeUnit.MINUTES.toMillis(3)
 }
 
@@ -945,7 +1105,7 @@ private fun formatTimestamp(timestamp: Long): String {
         }
         // 昨天的消息显示"昨天 HH:mm"
         DateUtils.isToday(timestamp + TimeUnit.DAYS.toMillis(1)) -> {
-            "昨天 ${SimpleDateFormat("HH:mm", Locale.getDefault()).format(timestamp)}"
+            "昨 ${SimpleDateFormat("HH:mm", Locale.getDefault()).format(timestamp)}"
         }
         // 今年的消息显示"MM-dd HH:mm"
         calendar.get(Calendar.YEAR) == Calendar.getInstance().get(Calendar.YEAR) -> {
@@ -955,5 +1115,17 @@ private fun formatTimestamp(timestamp: Long): String {
         else -> {
             SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(timestamp)
         }
+    }
+}
+
+// 添加辅助函数
+private fun formatDuration(duration: Long): String {
+    val seconds = (duration / 1000) % 60
+    val minutes = (duration / (1000 * 60)) % 60
+    val hours = duration / (1000 * 60 * 60)
+    
+    return when {
+        hours > 0 -> String.format("%d:%02d:%02d", hours, minutes, seconds)
+        else -> String.format("%02d:%02d", minutes, seconds)
     }
 }
