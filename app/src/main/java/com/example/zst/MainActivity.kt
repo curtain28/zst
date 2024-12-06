@@ -485,11 +485,17 @@ fun ChatScreen() {
                             
                             // 更多按钮
                             IconButton(
-                                onClick = { showMorePanel = !showMorePanel },  // 切换更多面板的显示状态
+                                onClick = { showMorePanel = !showMorePanel },
                                 modifier = Modifier.size(24.dp)
                             ) {
                                 Icon(
-                                    painter = painterResource(id = R.drawable.ic_more),
+                                    painter = painterResource(
+                                        id = if (showMorePanel) {
+                                            R.drawable.ic_more_horizontal
+                                        } else {
+                                            R.drawable.ic_more_vertical
+                                        }
+                                    ),
                                     contentDescription = "更多功能"
                                 )
                             }
