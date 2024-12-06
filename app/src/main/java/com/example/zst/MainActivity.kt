@@ -87,6 +87,8 @@ import android.content.Context
 import android.os.Build
 import android.os.Environment
 import android.provider.Settings
+import androidx.compose.ui.window.DialogProperties
+import androidx.compose.material3.BasicAlertDialog
 
 // 修改消息数据类以支持不同类型的消息
 sealed class ChatMessage {
@@ -190,6 +192,11 @@ private enum class StorageAction {
     PICK_FILE
 }
 
+// 将这些变量移到类外部作为顶层属性
+private var showStoragePermissionDialog by mutableStateOf(false)
+private var currentDialogAction: (() -> Unit)? = null
+private var currentDialogDismiss: (() -> Unit)? = null
+
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -218,22 +225,20 @@ class MainActivity : ComponentActivity() {
     fun checkStoragePermissions(onResult: (Boolean) -> Unit) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             if (!Environment.isExternalStorageManager()) {
-                // 使用 Android 原生的 AlertDialog
-                android.app.AlertDialog.Builder(this)
-                    .setTitle("存储权限")
-                    .setMessage("需要存储权限才能保存文件到手机存储")
-                    .setPositiveButton("去设置") { _, _ ->
+                // 使用 Compose AlertDialog
+                val intent = Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)
+                showStoragePermissionDialog(
+                    onConfirm = {
                         try {
-                            val intent = Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)
                             startActivity(intent)
                         } catch (e: Exception) {
                             onResult(false)
                         }
-                    }
-                    .setNegativeButton("取消") { _, _ ->
+                    },
+                    onDismiss = {
                         onResult(false)
                     }
-                    .show()
+                )
             } else {
                 onResult(true)
             }
@@ -243,6 +248,116 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+// 修改显示对话框的函数为顶层函数
+private fun showStoragePermissionDialog(
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    showStoragePermissionDialog = true
+    currentDialogAction = onConfirm
+    currentDialogDismiss = onDismiss
+}
+
+// 在 ChatScreen 中添加对话框组件
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun StoragePermissionDialog(
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    BasicAlertDialog(
+        onDismissRequest = onDismiss,
+        modifier = Modifier.fillMaxWidth(),
+        properties = DialogProperties(
+            usePlatformDefaultWidth = false
+        )
+    ) {
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp),
+            shape = RoundedCornerShape(28.dp),
+            color = Color.White
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(24.dp)
+            ) {
+                // 图标
+                Icon(
+                    painter = painterResource(id = R.drawable.ic_file),
+                    contentDescription = null,
+                    tint = Color(0xFF2196F3),  // Material Blue
+                    modifier = Modifier
+                        .align(Alignment.CenterHorizontally)
+                        .padding(bottom = 16.dp)
+                )
+                
+                // 标题
+                Text(
+                    text = "存储权限",
+                    style = MaterialTheme.typography.headlineSmall,
+                    color = Color(0xFF2196F3),  // Material Blue
+                    modifier = Modifier
+                        .align(Alignment.CenterHorizontally)
+                        .padding(bottom = 16.dp)
+                )
+                
+                // 内容
+                Text(
+                    text = """
+                        需要存储权限才能保存文件到手机存储。
+                        
+                        请在接下来的系统设置页面中，点击"允许访问所有文件"开关以授予权限。
+                    """.trimIndent(),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Color(0xFF424242),  // 深灰色文本
+                    modifier = Modifier.padding(bottom = 24.dp)
+                )
+                
+                // 按钮行
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 8.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    TextButton(
+                        onClick = {
+                            showStoragePermissionDialog = false
+                            onDismiss()
+                        },
+                        colors = ButtonDefaults.textButtonColors(
+                            contentColor = Color(0xFF2196F3)  // Material Blue
+                        )
+                    ) {
+                        Text(text = "取消")
+                    }
+                    
+                    Button(
+                        onClick = {
+                            showStoragePermissionDialog = false
+                            onConfirm()
+                        },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color(0xFF2196F3),  // Material Blue
+                            contentColor = Color.White
+                        ),
+                        elevation = ButtonDefaults.buttonElevation(
+                            defaultElevation = 0.dp,
+                            pressedElevation = 2.dp
+                        )
+                    ) {
+                        Text(text = "去设置")
+                    }
+                }
+            }
+        }
+    }
+}
+
+// 在 ChatScreen 函数中添加对话框的显示逻辑
 @Composable
 fun ChatScreen() {
     // 状态变量
@@ -385,7 +500,7 @@ fun ChatScreen() {
                     .setMessage("需要存储权限才能选择文件")
                     .setPositiveButton("去设置") { _, _ ->
                         try {
-                            // 打开应用设页���
+                            // 打开应用设页
                             val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
                                 data = Uri.fromParts("package", it.packageName, null)
                             }
@@ -615,7 +730,7 @@ fun ChatScreen() {
                                     painter = painterResource(
                                         id = if (isVoiceMode) R.drawable.ic_keyboard else R.drawable.ic_voice
                                     ),
-                                    contentDescription = if (isVoiceMode) "切换到键盘" else "切换语音",
+                                    contentDescription = if (isVoiceMode) "切换到键" else "切换语音",
                                     tint = Color.Gray
                                 )
                             }
@@ -1004,6 +1119,22 @@ fun ChatScreen() {
             }
         }
     }
+
+    // 对话框显示逻辑
+    if (showStoragePermissionDialog) {
+        StoragePermissionDialog(
+            onConfirm = {
+                showStoragePermissionDialog = false
+                currentDialogAction?.invoke()
+                currentDialogAction = null
+            },
+            onDismiss = {
+                showStoragePermissionDialog = false
+                currentDialogDismiss?.invoke()
+                currentDialogDismiss = null
+            }
+        )
+    }
 }
 
 @Composable
@@ -1059,7 +1190,7 @@ fun MessageItem(message: ChatMessage) {
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
-                                text = "图片加载失败",
+                                text = "图加载失败",
                                 color = Color.Red
                             )
                         }
