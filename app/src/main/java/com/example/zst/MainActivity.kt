@@ -96,27 +96,47 @@ sealed class ChatMessage {
     ) : ChatMessage()
 }
 
-// 在 ChatScreen 函数外部添加全局 MediaPlayer 管理
+// 在 ChatScreen 函数外部添加全局状态管理
 private var currentPlayer: MediaPlayer? = null
+private var currentPlayingFile: String? = null
+private var isPlayerPlaying: Boolean = false
 
 // 修改播放语音的函数
 private fun playVoice(audioFile: String) {
-    // 停止当前正在播放的语音
-    currentPlayer?.apply {
-        if (isPlaying) {
-            stop()
+    if (audioFile == currentPlayingFile && currentPlayer != null) {
+        // 如果点击的是当前正在播放的语音
+        if (isPlayerPlaying) {
+            // 如果正在播放，则暂停
+            currentPlayer?.pause()
+            isPlayerPlaying = false
+        } else {
+            // 如果已暂停，则继续播放
+            currentPlayer?.start()
+            isPlayerPlaying = true
         }
-        release()
-    }
-    
-    // 创建并播放新的语音
-    currentPlayer = MediaPlayer().apply {
-        setDataSource(audioFile)
-        prepare()
-        start()
-        setOnCompletionListener { mp ->
-            mp.release()
-            currentPlayer = null
+    } else {
+        // 如果点击的是新的语音
+        // 停止并释放当前播放的语音
+        currentPlayer?.apply {
+            if (isPlaying) {
+                stop()
+            }
+            release()
+        }
+        
+        // 创建并播放新的语音
+        currentPlayer = MediaPlayer().apply {
+            setDataSource(audioFile)
+            prepare()
+            start()
+            isPlayerPlaying = true
+            currentPlayingFile = audioFile
+            setOnCompletionListener { mp ->
+                isPlayerPlaying = false
+                currentPlayingFile = null
+                mp.release()
+                currentPlayer = null
+            }
         }
     }
 }
@@ -134,7 +154,6 @@ class MainActivity : ComponentActivity() {
     
     override fun onDestroy() {
         super.onDestroy()
-        // 清理 MediaPlayer
         currentPlayer?.apply {
             if (isPlaying) {
                 stop()
@@ -142,6 +161,8 @@ class MainActivity : ComponentActivity() {
             release()
         }
         currentPlayer = null
+        currentPlayingFile = null
+        isPlayerPlaying = false
     }
 }
 
