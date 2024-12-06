@@ -668,23 +668,37 @@ fun MessageItem(message: ChatMessage) {
                 )
             }
             is ChatMessage.AudioMessage -> {
+                val minWidth = 60.dp  // 最小宽度
+                val maxWidth = 180.dp  // 最大宽度
+                val maxDuration = 60000L  // 最大时长（60秒）
+                
+                // 修正计算实际宽度的方式
+                val widthPercent = (message.duration.toFloat() / maxDuration).coerceIn(0f, 1f)
+                val width = minWidth + ((maxWidth - minWidth) * widthPercent)
+                
                 Surface(
                     shape = RoundedCornerShape(8.dp),
                     color = if (message.isFromMe) Color(0xFF95EC69) else Color.LightGray,
-                    modifier = Modifier.clickable {
-                        playVoice(message.audioFile)
-                    }
+                    modifier = Modifier
+                        .width(width)  // 设置动态宽度
+                        .clickable {
+                            playVoice(message.audioFile)
+                        }
                 ) {
                     Row(
                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween  // 让时长显示靠右
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.PlayArrow,
-                            contentDescription = "播放语音",
-                            tint = Color.Black
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.PlayArrow,
+                                contentDescription = "播放语音",
+                                tint = Color.Black
+                            )
+                        }
                         Text(
                             text = "${message.duration / 1000}\"",
                             color = Color.Black
