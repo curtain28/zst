@@ -1158,13 +1158,13 @@ fun MessageItem(message: ChatMessage) {
             is ChatMessage.TextMessage -> {
                 Surface(
                     shape = RoundedCornerShape(8.dp),
-                    color = if (message.isFromMe) Color(0xFF95EC69) else Color.LightGray,
+                    color = if (message.isFromMe) Color(0xFF2196F3) else Color.LightGray,
                     modifier = Modifier.widthIn(max = 250.dp)
                 ) {
                     Text(
                         text = message.content,
                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                        color = Color.Black
+                        color = if (message.isFromMe) Color.White else Color.Black
                     )
                 }
             }
@@ -1205,12 +1205,11 @@ fun MessageItem(message: ChatMessage) {
                 val widthPercent = (message.duration.toFloat() / maxDuration).coerceIn(0f, 1f)
                 val width = minWidth + ((maxWidth - minWidth) * widthPercent)
                 
-                // 直接使用可观察状态
                 val isPlaying = _currentPlayingFile.value == message.audioFile && _isPlayerPlaying.value
                 
                 Surface(
                     shape = RoundedCornerShape(8.dp),
-                    color = if (message.isFromMe) Color(0xFF95EC69) else Color.LightGray,
+                    color = if (message.isFromMe) Color(0xFF2196F3) else Color.LightGray,
                     modifier = Modifier
                         .width(width)
                         .clickable {
@@ -1230,7 +1229,7 @@ fun MessageItem(message: ChatMessage) {
                                 Row(
                                     modifier = Modifier
                                         .height(18.dp)
-                                        .width(24.dp),  // 保持与图标相同的宽度
+                                        .width(24.dp),
                                     horizontalArrangement = Arrangement.spacedBy(4.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
@@ -1265,11 +1264,10 @@ fun MessageItem(message: ChatMessage) {
                                     }
                                 }
                             } else {
-                                // 未播放时显示播放图标
                                 Icon(
                                     painter = painterResource(id = R.drawable.ic_play_audio),
                                     contentDescription = "播放语音",
-                                    tint = Color.Black,
+                                    tint = if (message.isFromMe) Color.White else Color.Black,
                                     modifier = Modifier.size(24.dp)
                                 )
                             }
@@ -1277,7 +1275,7 @@ fun MessageItem(message: ChatMessage) {
                         
                         Text(
                             text = "${message.duration / 1000}\"",
-                            color = Color.Black
+                            color = if (message.isFromMe) Color.White else Color.Black
                         )
                     }
                 }
