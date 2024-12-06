@@ -1347,7 +1347,7 @@ fun MessageItem(message: ChatMessage) {
             is ChatMessage.FileMessage -> {
                 Surface(
                     shape = RoundedCornerShape(8.dp),
-                    color = if (message.isFromMe) Color(0xFF95EC69) else Color.LightGray,
+                    color = Color.White,
                     modifier = Modifier
                         .widthIn(max = 280.dp)
                         .clickable {
@@ -1360,7 +1360,8 @@ fun MessageItem(message: ChatMessage) {
                             } catch (e: Exception) {
                                 Toast.makeText(context, "无法打开此类型的文件", Toast.LENGTH_SHORT).show()
                             }
-                        }
+                        },
+                    shadowElevation = 2.dp
                 ) {
                     Row(
                         modifier = Modifier.padding(12.dp),
@@ -1370,7 +1371,7 @@ fun MessageItem(message: ChatMessage) {
                         Icon(
                             painter = painterResource(id = R.drawable.ic_file),
                             contentDescription = "文件",
-                            tint = Color.DarkGray,
+                            tint = Color(0xFF2196F3),
                             modifier = Modifier.size(36.dp)
                         )
                         
@@ -1386,7 +1387,7 @@ fun MessageItem(message: ChatMessage) {
                             Spacer(modifier = Modifier.height(4.dp))
                             Text(
                                 text = formatFileSize(message.fileSize),
-                                color = Color.DarkGray,
+                                color = Color.Gray,
                                 fontSize = 12.sp
                             )
                         }
